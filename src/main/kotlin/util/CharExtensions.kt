@@ -1,4 +1,4 @@
-package org.example.utils
+package org.example.util
 
 fun Char.isAlpha(): Boolean {
     return this.isLetter() || this == '_'

@@ -2,6 +2,7 @@ package org.example
 
 import org.example.scanner.Scanner
 import org.example.scanner.Token
+import org.example.scanner.TokenType
 import java.io.File
 import kotlin.system.exitProcess
 
@@ -14,6 +15,17 @@ class Lox {
             message: String,
         ) {
             report(line, "", message)
+        }
+
+        fun error(
+            token: Token,
+            message: String,
+        ) {
+            if (token.type == TokenType.EOF) {
+                report(token.line, "at end", message)
+            } else {
+                report(token.line, "at '${token.lexeme}'", message)
+            }
         }
 
         fun report(

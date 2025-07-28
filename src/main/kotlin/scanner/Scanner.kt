@@ -1,8 +1,8 @@
 package org.example.scanner
 
 import org.example.Lox
-import org.example.utils.isAlpha
-import org.example.utils.isAlphaNumeric
+import org.example.util.isAlpha
+import org.example.util.isAlphaNumeric
 
 class Scanner(val source: String) {
     private var start = 0
@@ -125,7 +125,7 @@ class Scanner(val source: String) {
         if (isAtEnd()) return false
         if (expected != source[current]) return false
 
-        current++
+        advance()
         return true
     }
 
