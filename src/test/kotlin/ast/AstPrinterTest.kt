@@ -4,7 +4,7 @@ import org.example.ast.AstPrinter
 import org.example.ast.Expr
 import org.example.scanner.Token
 import org.example.scanner.TokenType
-import org.junit.jupiter.api.Test
+import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class AstPrinterTest {

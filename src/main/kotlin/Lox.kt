@@ -1,5 +1,8 @@
 package org.example
 
+import org.example.interpreter.Interpreter
+import org.example.interpreter.RuntimeError
+import org.example.parser.Parser
 import org.example.scanner.Scanner
 import org.example.scanner.Token
 import org.example.scanner.TokenType
@@ -8,7 +11,9 @@ import kotlin.system.exitProcess
 
 class Lox {
     companion object {
+        val interpreter = Interpreter()
         var hadError = false
+        var hadRuntimeError = false
 
         fun error(
             line: Int,
@@ -28,13 +33,18 @@ class Lox {
             }
         }
 
+        fun runtimeError(error: RuntimeError) {
+            System.err.println("${error.message}\n[line ${error.token.line}]")
+            hadRuntimeError = true
+        }
+
         fun report(
             line: Int,
             where: String,
             message: String,
         ) {
             System.err.println(
-                "[line $line] Error$where: $message",
+                "[line $line] Error $where: $message",
             )
             hadError = true
         }
@@ -59,6 +69,7 @@ class Lox {
         run(bytes.toString(Charsets.UTF_8))
 
         if (hadError) exitProcess(65)
+        if (hadRuntimeError) exitProcess(70)
     }
 
     private fun runPrompt() {
@@ -75,9 +86,10 @@ class Lox {
     private fun run(source: String) {
         val scanner = Scanner(source)
         val tokens: List<Token> = scanner.scanTokens()
+        val parser = Parser(tokens)
+        val expressions = parser.parse()
 
-        for (token in tokens) {
-            println(token)
-        }
+        if (hadError || expressions == null) return
+        interpreter.interpret(expressions)
     }
 }
