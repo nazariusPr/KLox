@@ -27,6 +27,7 @@ enum class TokenType {
     GREATER_EQUAL,
     LESS,
     LESS_EQUAL,
+    STAR_STAR,
 
     // Literals.
     IDENTIFIER,
@@ -35,6 +36,8 @@ enum class TokenType {
 
     // Keywords.
     AND,
+    BREAK,
+    CONTINUE,
     CLASS,
     ELSE,
     FALSE,

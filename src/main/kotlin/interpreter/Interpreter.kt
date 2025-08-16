@@ -2,21 +2,103 @@ package org.example.interpreter
 
 import org.example.Lox
 import org.example.ast.Expr
+import org.example.ast.Stmt
+import org.example.runtime.Environment
 import org.example.scanner.Token
 import org.example.scanner.TokenType
+import kotlin.math.pow
 
-class Interpreter : Expr.Visitor<Any?> {
-    fun interpret(expression: Expr): String? {
-        return try {
-            val value = evaluate(expression)
-            val result = stringify(value)
-            print(result)
-            result
+class Interpreter : Expr.Visitor<Any?>, Stmt.Visitor<Unit> {
+    private var environment: Environment = Environment()
+
+    fun interpret(statements: List<Stmt?>) {
+        try {
+            for (stmt in statements) {
+                execute(stmt)
+            }
         } catch (error: RuntimeError) {
             Lox.runtimeError(error)
-            null
         }
     }
+
+    override fun visitBreakStmt(stmt: Stmt.Break) {
+        throw BreakException()
+    }
+
+    override fun visitBlockStmt(stmt: Stmt.Block) {
+        executeBlock(stmt.statements, Environment(environment))
+    }
+
+    override fun visitContinueStmt(stmt: Stmt.Continue) {
+        throw ContinueException()
+    }
+
+    override fun visitEmptyStmt(stmt: Stmt.Empty) {
+        // Do nothing
+    }
+
+    override fun visitExpressionStmt(stmt: Stmt.Expression) {
+        evaluate(stmt.expression)
+    }
+
+    override fun visitIfStmt(stmt: Stmt.If) {
+        if (isTruthy(evaluate(stmt.condition))) {
+            execute(stmt.thenBranch)
+        } else if (stmt.elseBranch != null) {
+            execute(stmt.elseBranch)
+        }
+    }
+
+    override fun visitPrintStmt(stmt: Stmt.Print) {
+        val value = evaluate(stmt.expression)
+        println(stringify(value))
+    }
+
+    override fun visitVarStmt(stmt: Stmt.Var) {
+        var value: Any? = null
+        if (stmt.initializer != null) {
+            value = evaluate(stmt.initializer)
+        }
+
+        environment.define(stmt.name.lexeme, value)
+    }
+
+    override fun visitWhileStmt(stmt: Stmt.While) {
+        while (isTruthy(evaluate(stmt.condition))) {
+            try {
+                execute(stmt.body)
+            } catch (_: BreakException) {
+                break
+            } catch (_: ContinueException) {
+                continue
+            }
+        }
+    }
+
+    private fun execute(stmt: Stmt?) = stmt?.accept(this)
+
+    fun executeBlock(
+        statements: List<Stmt?>,
+        environment: Environment,
+    ) {
+        val previous = this.environment
+        try {
+            this.environment = environment
+            for (statement in statements) {
+                execute(statement)
+            }
+        } finally {
+            this.environment = previous
+        }
+    }
+
+    override fun visitAssignExpr(expr: Expr.Assign): Any? {
+        val value: Any? = evaluate(expr.value)
+        environment.assign(expr.name, value)
+        return value
+    }
+
+    override fun visitVariableExpr(expr: Expr.Variable): Any? = environment.get(expr.name)
 
     override fun visitBinaryExpr(expr: Expr.Binary): Any? {
         val left = evaluate(expr.left)
@@ -43,12 +125,22 @@ class Interpreter : Expr.Visitor<Any?> {
 
             TokenType.SLASH -> {
                 checkNumberOperands(expr.operator, left, right)
+
+                if (right == 0.0) {
+                    throw RuntimeError(expr.operator, "Division by zero.")
+                }
+
                 (left as Double) / (right as Double)
             }
 
             TokenType.STAR -> {
                 checkNumberOperands(expr.operator, left, right)
                 (left as Double) * (right as Double)
+            }
+
+            TokenType.STAR_STAR -> {
+                checkNumberOperands(expr.operator, left, right)
+                (left as Double).pow(right as Double)
             }
 
             TokenType.GREATER -> {
@@ -83,6 +175,22 @@ class Interpreter : Expr.Visitor<Any?> {
     override fun visitGroupingExpr(expr: Expr.Grouping): Any? = evaluate(expr.expression)
 
     override fun visitLiteralExpr(expr: Expr.Literal): Any? = expr.value
+
+    override fun visitLogicalExpr(expr: Expr.Logical): Any? {
+        val left = evaluate(expr.left)
+
+        if (expr.operator.type == TokenType.OR) {
+            if (isTruthy(left)) {
+                return left
+            }
+        } else {
+            if (!isTruthy(left)) {
+                return left
+            }
+        }
+
+        return evaluate(expr.right)
+    }
 
     override fun visitUnaryExpr(expr: Expr.Unary): Any? {
         val right = evaluate(expr.right)
@@ -132,7 +240,7 @@ class Interpreter : Expr.Visitor<Any?> {
         if (obj is Double) {
             var text = obj.toString()
             if (text.endsWith(".0")) {
-                text = text.substring(0, text.length - 2)
+                text = text.dropLast(2)
             }
             return text
         }
@@ -142,3 +250,7 @@ class Interpreter : Expr.Visitor<Any?> {
 }
 
 class RuntimeError(val token: Token, message: String) : RuntimeException(message)
+
+class BreakException : RuntimeException()
+
+class ContinueException : RuntimeException()

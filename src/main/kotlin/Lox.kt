@@ -1,5 +1,6 @@
 package org.example
 
+import org.example.ast.Stmt
 import org.example.interpreter.Interpreter
 import org.example.interpreter.RuntimeError
 import org.example.parser.Parser
@@ -75,8 +76,7 @@ class Lox {
     private fun runPrompt() {
         while (true) {
             print("> ")
-            val line = readLine()
-            if (line == null) break
+            val line = readlnOrNull() ?: break
 
             run(line)
             hadError = false
@@ -84,12 +84,10 @@ class Lox {
     }
 
     private fun run(source: String) {
-        val scanner = Scanner(source)
-        val tokens: List<Token> = scanner.scanTokens()
-        val parser = Parser(tokens)
-        val expressions = parser.parse()
+        val tokens: List<Token> = Scanner(source).scanTokens()
+        val expressions: List<Stmt> = Parser(tokens).parse()
 
-        if (hadError || expressions == null) return
+        if (hadError) return
         interpreter.interpret(expressions)
     }
 }

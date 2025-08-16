@@ -23,14 +23,6 @@ tasks.named<JavaExec>("run") {
     standardInput = System.`in`
 }
 
-tasks.register<JavaExec>("runGenerateAst") {
-    group = "application"
-    description = "Run the GenerateAst main function"
-    mainClass.set("org.example.tool.GenerateAstKt")
-    classpath = sourceSets.main.get().runtimeClasspath
-    standardInput = System.`in`
-}
-
 kotlin {
     jvmToolchain(21)
 }
@@ -41,7 +33,7 @@ application {
 
 spotless {
     kotlin {
-        target("src/**/*.kt")
+        target("src/**/*.kt", "script/**/*.kts")
         ktlint("1.2.1")
     }
     kotlinGradle {

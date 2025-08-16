@@ -2,24 +2,208 @@ package org.example.parser
 
 import org.example.Lox
 import org.example.ast.Expr
+import org.example.ast.Stmt
 import org.example.scanner.Token
 import org.example.scanner.TokenType
 
 class Parser(val tokens: List<Token>) {
     private var current: Int = 0
+    private var loopDepth: Int = 0
 
     private class ParseError : RuntimeException()
 
-    fun parse(): Expr? {
-        return try {
-            expression()
+    fun parse(): List<Stmt> {
+        val statements = mutableListOf<Stmt>()
+
+        while (!isAtEnd()) {
+            statements.add(declaration())
+        }
+
+        return statements
+    }
+
+    private fun declaration(): Stmt {
+        try {
+            if (match(TokenType.VAR)) return varDeclaration()
+
+            return statement()
         } catch (_: ParseError) {
-            null
+            synchronize()
+            return Stmt.Empty()
         }
     }
 
+    private fun varDeclaration(): Stmt {
+        val name: Token = consume(TokenType.IDENTIFIER, "Expect variable name.")
+
+        var initializer: Expr? = null
+        if (match(TokenType.EQUAL)) {
+            initializer = expression()
+        }
+
+        consume(TokenType.SEMICOLON, "Expect ';' after variable declaration.")
+        return Stmt.Var(name, initializer)
+    }
+
+    private fun statement(): Stmt {
+        if (match(TokenType.BREAK)) return breakStatement()
+        if (match(TokenType.CONTINUE)) return continueStatement()
+        if (match(TokenType.FOR)) return forStatement()
+        if (match(TokenType.IF)) return ifStatement()
+        if (match(TokenType.PRINT)) return printStatement()
+        if (match(TokenType.LEFT_BRACE)) return Stmt.Block(block())
+        if (match(TokenType.WHILE)) return whileStatement()
+
+        return expressionStatement()
+    }
+
+    private fun breakStatement(): Stmt {
+        if (loopDepth == 0) {
+            error(previous(), "Cannot use 'break' outside of a loop.")
+        }
+        consume(TokenType.SEMICOLON, "Expect ';' after expression.")
+        return Stmt.Break()
+    }
+
+    private fun continueStatement(): Stmt {
+        if (loopDepth == 0) {
+            error(previous(), "Cannot use 'break' outside of a loop.")
+        }
+        consume(TokenType.SEMICOLON, "Expect ';' after expression.")
+        return Stmt.Continue()
+    }
+
+    private fun forStatement(): Stmt {
+        consume(TokenType.LEFT_PAREN, "Expect '(' after 'for'.")
+
+        val initializer: Stmt? =
+            when {
+                match(TokenType.SEMICOLON) -> null
+                match(TokenType.VAR) -> varDeclaration()
+                else -> expressionStatement()
+            }
+
+        var condition = if (!match(TokenType.SEMICOLON)) expression() else null
+        consume(TokenType.SEMICOLON, "Expect ';' after loop condition.")
+
+        val increment = if (!check(TokenType.RIGHT_PAREN)) expression() else null
+        consume(TokenType.RIGHT_PAREN, "Expect ')' after for clauses.")
+
+        loopDepth++
+        var body: Stmt = statement()
+        loopDepth--
+
+        increment?.let {
+            body = Stmt.Block(listOf(body, Stmt.Expression(it)))
+        }
+
+        if (condition == null) condition = Expr.Literal(true)
+        body = Stmt.While(condition, body)
+
+        initializer?.let {
+            body = Stmt.Block(listOf(it, body))
+        }
+
+        return body
+    }
+
+    private fun ifStatement(): Stmt {
+        consume(TokenType.LEFT_PAREN, "Expect '(' after 'if'.")
+        val condition = expression()
+        consume(TokenType.RIGHT_PAREN, "Expect ')' after condition.")
+
+        val thenBranch = statement()
+        var elseBranch: Stmt? = null
+        if (match(TokenType.ELSE)) {
+            elseBranch = statement()
+        }
+
+        return Stmt.If(condition, thenBranch, elseBranch)
+    }
+
+    private fun printStatement(): Stmt {
+        val value: Expr = expression()
+        consume(TokenType.SEMICOLON, "Expect ';' after value.")
+
+        return Stmt.Print(value)
+    }
+
+    private fun expressionStatement(): Stmt {
+        val value: Expr = expression()
+        consume(TokenType.SEMICOLON, "Expect ';' after expression.")
+
+        return Stmt.Expression(value)
+    }
+
+    private fun whileStatement(): Stmt {
+        consume(TokenType.LEFT_PAREN, "Expect '(' after 'while'.")
+        val condition: Expr = expression()
+        consume(TokenType.RIGHT_PAREN, "Expect ')' after condition.")
+
+        loopDepth++
+        val body: Stmt = statement()
+        loopDepth--
+
+        return Stmt.While(condition, body)
+    }
+
+    private fun block(): List<Stmt> {
+        val statements = mutableListOf<Stmt>()
+
+        while (!check(TokenType.RIGHT_BRACE) && !isAtEnd()) {
+            statements.add(declaration())
+        }
+
+        consume(TokenType.RIGHT_BRACE, "Expect '}' after block.")
+        return statements
+    }
+
     private fun expression(): Expr {
-        return equality()
+        return assignment()
+    }
+
+    private fun assignment(): Expr {
+        val expr = or()
+
+        if (match(TokenType.EQUAL)) {
+            val equals = previous()
+            val value = assignment()
+
+            when (expr) {
+                is Expr.Variable -> {
+                    val name = expr.name
+                    return Expr.Assign(name, value)
+                }
+
+                else -> error(equals, "Invalid assignment target.")
+            }
+        }
+
+        return expr
+    }
+
+    private fun or(): Expr {
+        var expr = and()
+
+        while (match(TokenType.OR)) {
+            val operator = previous()
+            val right = and()
+            expr = Expr.Logical(expr, operator, right)
+        }
+
+        return expr
+    }
+
+    private fun and(): Expr {
+        var expr = equality()
+
+        while (match(TokenType.AND)) {
+            val operator = previous()
+            val right = equality()
+            expr = Expr.Logical(expr, operator, right)
+        }
+
+        return expr
     }
 
     private fun equality(): Expr {
@@ -59,11 +243,23 @@ class Parser(val tokens: List<Token>) {
     }
 
     private fun factor(): Expr {
-        var expr = unary()
+        var expr = power()
 
         while (match(TokenType.SLASH, TokenType.STAR)) {
             val operator = previous()
-            val right = unary()
+            val right = power()
+            expr = Expr.Binary(expr, operator, right)
+        }
+
+        return expr
+    }
+
+    private fun power(): Expr {
+        var expr = unary()
+
+        if (match(TokenType.STAR_STAR)) {
+            val operator = previous()
+            val right = power()
             expr = Expr.Binary(expr, operator, right)
         }
 
@@ -87,6 +283,7 @@ class Parser(val tokens: List<Token>) {
             match(TokenType.TRUE) -> Expr.Literal(true)
             match(TokenType.NIL) -> Expr.Literal(null)
             match(TokenType.NUMBER, TokenType.STRING) -> Expr.Literal(previous().literal)
+            match(TokenType.IDENTIFIER) -> Expr.Variable(previous())
             match(TokenType.LEFT_PAREN) -> {
                 val expr = expression()
                 consume(TokenType.RIGHT_PAREN, "Expect ')' after expression.")

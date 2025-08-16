@@ -14,6 +14,8 @@ class Scanner(val source: String) {
         private val keywords: Map<String, TokenType> =
             mapOf(
                 "and" to TokenType.AND,
+                "break" to TokenType.BREAK,
+                "continue" to TokenType.CONTINUE,
                 "class" to TokenType.CLASS,
                 "else" to TokenType.ELSE,
                 "false" to TokenType.FALSE,
@@ -47,9 +49,7 @@ class Scanner(val source: String) {
     }
 
     private fun scanToken() {
-        val c: Char = advance()
-
-        when (c) {
+        when (val c: Char = advance()) {
             '(' -> addToken(TokenType.LEFT_PAREN)
             ')' -> addToken(TokenType.RIGHT_PAREN)
             '{' -> addToken(TokenType.LEFT_BRACE)
@@ -59,7 +59,10 @@ class Scanner(val source: String) {
             '-' -> addToken(TokenType.MINUS)
             '+' -> addToken(TokenType.PLUS)
             ';' -> addToken(TokenType.SEMICOLON)
-            '*' -> addToken(TokenType.STAR)
+            '*' -> {
+                addToken(if (match('*')) TokenType.STAR_STAR else TokenType.STAR)
+            }
+
             '!' -> {
                 addToken(if (match('=')) TokenType.BANG_EQUAL else TokenType.BANG)
             }
