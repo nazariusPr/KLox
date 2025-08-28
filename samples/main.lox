@@ -1,0 +1,7 @@
+fun test(a){
+    a();
+}
+
+test(
+    fun() { print("Hello world!"); }
+);

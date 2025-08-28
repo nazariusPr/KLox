@@ -14,9 +14,11 @@ sealed class Stmt {
 
         fun visitExpressionStmt(stmt: Expression): R
 
+        fun visitFunctionStmt(stmt: Function): R
+
         fun visitIfStmt(stmt: If): R
 
-        fun visitPrintStmt(stmt: Print): R
+        fun visitReturnStmt(stmt: Return): R
 
         fun visitVarStmt(stmt: Var): R
 
@@ -43,12 +45,16 @@ sealed class Stmt {
         override fun <R> accept(visitor: Visitor<R>): R = visitor.visitExpressionStmt(this)
     }
 
+    data class Function(val name: Token?, val params: List<Token>, val body: List<Stmt>) : Stmt() {
+        override fun <R> accept(visitor: Visitor<R>): R = visitor.visitFunctionStmt(this)
+    }
+
     data class If(val condition: Expr, val thenBranch: Stmt, val elseBranch: Stmt?) : Stmt() {
         override fun <R> accept(visitor: Visitor<R>): R = visitor.visitIfStmt(this)
     }
 
-    data class Print(val expression: Expr) : Stmt() {
-        override fun <R> accept(visitor: Visitor<R>): R = visitor.visitPrintStmt(this)
+    data class Return(val keyword: Token, val value: Expr?) : Stmt() {
+        override fun <R> accept(visitor: Visitor<R>): R = visitor.visitReturnStmt(this)
     }
 
     data class Var(val name: Token, val initializer: Expr?) : Stmt() {

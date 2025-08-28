@@ -4,12 +4,23 @@ import org.example.Lox
 import org.example.ast.Expr
 import org.example.ast.Stmt
 import org.example.runtime.Environment
+import org.example.runtime.LoxCallable
+import org.example.runtime.LoxFunction
 import org.example.scanner.Token
 import org.example.scanner.TokenType
+import org.example.util.clock
+import org.example.util.print
+import org.example.util.stringify
 import kotlin.math.pow
 
 class Interpreter : Expr.Visitor<Any?>, Stmt.Visitor<Unit> {
-    private var environment: Environment = Environment()
+    val globals = Environment()
+    private var environment: Environment = globals
+
+    init {
+        globals.define("clock", clock)
+        globals.define("print", print)
+    }
 
     fun interpret(statements: List<Stmt?>) {
         try {
@@ -22,7 +33,7 @@ class Interpreter : Expr.Visitor<Any?>, Stmt.Visitor<Unit> {
     }
 
     override fun visitBreakStmt(stmt: Stmt.Break) {
-        throw BreakException()
+        throw Break()
     }
 
     override fun visitBlockStmt(stmt: Stmt.Block) {
@@ -30,7 +41,7 @@ class Interpreter : Expr.Visitor<Any?>, Stmt.Visitor<Unit> {
     }
 
     override fun visitContinueStmt(stmt: Stmt.Continue) {
-        throw ContinueException()
+        throw Continue()
     }
 
     override fun visitEmptyStmt(stmt: Stmt.Empty) {
@@ -41,6 +52,11 @@ class Interpreter : Expr.Visitor<Any?>, Stmt.Visitor<Unit> {
         evaluate(stmt.expression)
     }
 
+    override fun visitFunctionStmt(stmt: Stmt.Function) {
+        val function = LoxFunction(stmt, environment)
+        environment.define(stmt.name!!, function)
+    }
+
     override fun visitIfStmt(stmt: Stmt.If) {
         if (isTruthy(evaluate(stmt.condition))) {
             execute(stmt.thenBranch)
@@ -49,9 +65,13 @@ class Interpreter : Expr.Visitor<Any?>, Stmt.Visitor<Unit> {
         }
     }
 
-    override fun visitPrintStmt(stmt: Stmt.Print) {
-        val value = evaluate(stmt.expression)
-        println(stringify(value))
+    override fun visitReturnStmt(stmt: Stmt.Return) {
+        var value: Any? = null
+        if (stmt.value != null) {
+            value = evaluate(stmt.value)
+        }
+
+        throw Return(value)
     }
 
     override fun visitVarStmt(stmt: Stmt.Var) {
@@ -60,16 +80,16 @@ class Interpreter : Expr.Visitor<Any?>, Stmt.Visitor<Unit> {
             value = evaluate(stmt.initializer)
         }
 
-        environment.define(stmt.name.lexeme, value)
+        environment.define(stmt.name, value)
     }
 
     override fun visitWhileStmt(stmt: Stmt.While) {
         while (isTruthy(evaluate(stmt.condition))) {
             try {
                 execute(stmt.body)
-            } catch (_: BreakException) {
+            } catch (_: Break) {
                 break
-            } catch (_: ContinueException) {
+            } catch (_: Continue) {
                 continue
             }
         }
@@ -100,7 +120,7 @@ class Interpreter : Expr.Visitor<Any?>, Stmt.Visitor<Unit> {
 
     override fun visitVariableExpr(expr: Expr.Variable): Any? = environment.get(expr.name)
 
-    override fun visitBinaryExpr(expr: Expr.Binary): Any? {
+    override fun visitBinaryExpr(expr: Expr.Binary): Any {
         val left = evaluate(expr.left)
         val right = evaluate(expr.right)
 
@@ -108,8 +128,8 @@ class Interpreter : Expr.Visitor<Any?>, Stmt.Visitor<Unit> {
             TokenType.PLUS -> {
                 if (left is Double && right is Double) {
                     left + right
-                } else if (left is String && right is String) {
-                    left + right
+                } else if (left is String || right is String) {
+                    stringify(left) + stringify(right)
                 } else {
                     throw RuntimeError(
                         expr.operator,
@@ -172,7 +192,39 @@ class Interpreter : Expr.Visitor<Any?>, Stmt.Visitor<Unit> {
         }
     }
 
+    override fun visitCallExpr(expr: Expr.Call): Any? {
+        val callee = evaluate(expr.callee)
+
+        val arguments = mutableListOf<Any?>()
+        for (argument in expr.arguments) {
+            arguments.add(evaluate(argument))
+        }
+
+        if (callee !is LoxCallable) {
+            throw RuntimeError(
+                expr.paren,
+                "Can only call functions and classes.",
+            )
+        }
+
+        if (arguments.size != callee.arity()) {
+            throw RuntimeError(
+                expr.paren,
+                "Expected " +
+                    callee.arity() + " arguments but got " +
+                    arguments.size + ".",
+            )
+        }
+
+        return callee.call(this, arguments)
+    }
+
     override fun visitGroupingExpr(expr: Expr.Grouping): Any? = evaluate(expr.expression)
+
+    override fun visitLambdaExpr(expr: Expr.Lambda): Any {
+        val function = Stmt.Function(null, expr.params, expr.body)
+        return LoxFunction(function, environment)
+    }
 
     override fun visitLiteralExpr(expr: Expr.Literal): Any? = expr.value
 
@@ -192,7 +244,7 @@ class Interpreter : Expr.Visitor<Any?>, Stmt.Visitor<Unit> {
         return evaluate(expr.right)
     }
 
-    override fun visitUnaryExpr(expr: Expr.Unary): Any? {
+    override fun visitUnaryExpr(expr: Expr.Unary): Any {
         val right = evaluate(expr.right)
 
         return when (expr.operator.type) {
@@ -214,6 +266,8 @@ class Interpreter : Expr.Visitor<Any?>, Stmt.Visitor<Unit> {
     private fun isTruthy(obj: Any?): Boolean {
         if (obj == null) return false
         if (obj is Boolean) return obj
+        if (obj is Double && obj == 0.0) return false
+        if (obj is String && obj.isEmpty()) return false
         return true
     }
 
@@ -233,24 +287,12 @@ class Interpreter : Expr.Visitor<Any?>, Stmt.Visitor<Unit> {
         if (left is Double && right is Double) return
         throw RuntimeError(operator, "Operands must be numbers.")
     }
-
-    private fun stringify(obj: Any?): String {
-        if (obj == null) return "nil"
-
-        if (obj is Double) {
-            var text = obj.toString()
-            if (text.endsWith(".0")) {
-                text = text.dropLast(2)
-            }
-            return text
-        }
-
-        return obj.toString()
-    }
 }
 
 class RuntimeError(val token: Token, message: String) : RuntimeException(message)
 
-class BreakException : RuntimeException()
+class Break : RuntimeException()
 
-class ContinueException : RuntimeException()
+class Continue : RuntimeException()
+
+class Return(val value: Any?) : RuntimeException()

@@ -24,7 +24,6 @@ class Scanner(val source: String) {
                 "if" to TokenType.IF,
                 "nil" to TokenType.NIL,
                 "or" to TokenType.OR,
-                "print" to TokenType.PRINT,
                 "return" to TokenType.RETURN,
                 "super" to TokenType.SUPER,
                 "this" to TokenType.THIS,

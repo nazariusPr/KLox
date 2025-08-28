@@ -22,10 +22,21 @@ class Environment(val enclosing: Environment? = null) {
     }
 
     fun define(
-        lexeme: String,
+        name: Token,
         value: Any?,
     ) {
+        val lexeme = name.lexeme
+        if (values.containsKey(lexeme)) {
+            throw RuntimeError(name, "Variable '$lexeme' already declared in this scope.")
+        }
         values[lexeme] = value
+    }
+
+    fun define(
+        name: String,
+        value: Any?,
+    ) {
+        values[name] = value
     }
 
     fun assign(

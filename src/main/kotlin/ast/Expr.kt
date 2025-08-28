@@ -8,7 +8,11 @@ sealed class Expr {
 
         fun visitBinaryExpr(expr: Binary): R
 
+        fun visitCallExpr(expr: Call): R
+
         fun visitGroupingExpr(expr: Grouping): R
+
+        fun visitLambdaExpr(expr: Lambda): R
 
         fun visitLiteralExpr(expr: Literal): R
 
@@ -27,8 +31,16 @@ sealed class Expr {
         override fun <R> accept(visitor: Visitor<R>): R = visitor.visitBinaryExpr(this)
     }
 
+    data class Call(val callee: Expr, val paren: Token, val arguments: List<Expr>) : Expr() {
+        override fun <R> accept(visitor: Visitor<R>): R = visitor.visitCallExpr(this)
+    }
+
     data class Grouping(val expression: Expr) : Expr() {
         override fun <R> accept(visitor: Visitor<R>): R = visitor.visitGroupingExpr(this)
+    }
+
+    data class Lambda(val params: List<Token>, val body: List<Stmt>) : Expr() {
+        override fun <R> accept(visitor: Visitor<R>): R = visitor.visitLambdaExpr(this)
     }
 
     data class Literal(val value: Any?) : Expr() {
